@@ -29,7 +29,7 @@ def get_filenames(directory_path: str) -> list:
         files += get_filenames(directory_path + "/" + item) 
   return files
 
-def chunk_md(md: str,chunk_size=512, chunk_overlap=20) -> list:
+def chunk_md(md: str,chunk_size=507, chunk_overlap=20) -> list:
     md_text = get_text_from_md(md)
     markdown_splitter = MarkdownTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     docs = markdown_splitter.create_documents([str(md_text)])
@@ -44,25 +44,30 @@ def chunk_md(md: str,chunk_size=512, chunk_overlap=20) -> list:
     return chunks
 
 def upsert_chunk(chunks: list, pc, index) -> None:
-    embeddings = pc.inference.embed(
-        model="multilingual-e5-large",
-        inputs=[d['text'] for d in chunks],
-        parameters={
-            "input_type": "passage"
-        }
-    )
+    #max sequences per batch: 96
+    i = 0
+    while i <= len(chunks):
+        embeddings = pc.inference.embed(
+            model="multilingual-e5-large",
+            inputs=[d['text'] for d in chunks[i:i+96]],
+            parameters={
+                "input_type": "passage"
+            }
+        )
 
-    vectors = []
-    for d, e in zip(chunks, embeddings):
-        vectors.append({
-            "id": d['id'],
-            "values": e['values'],
-            "metadata": {'text': d['text'], 'source': d['filename']}
-        })
-    index.upsert(
-        vectors=vectors,
-        namespace=str(os.getenv('PINECONE_NAMESPACE') or "")
-    )
+        vectors = []
+        for d, e in zip(chunks[i:i+96], embeddings):
+            vectors.append({
+                "id": d['id'],
+                "values": e['values'],
+                "metadata": {'text': d['text'], 'source': d['filename']}
+            })
+            
+        index.upsert(
+            vectors=vectors,
+            namespace=str(os.getenv('PINECONE_NAMESPACE') or "")
+        )
+        i+=96
 
 def get_pinecone(pc):
     try:
