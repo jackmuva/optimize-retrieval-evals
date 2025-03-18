@@ -87,6 +87,9 @@ def get_pinecone(pc):
     return index
 
 
+def clear_namespace(index):
+    index.delete(delete_all=True, namespace=str(os.getenv('PINECONE_NAMESPACE') or ""))
+
 def index_pinecone_with_knowledge_bases(chunk_size=512, chunk_overlap=20):
     pc = Pinecone(api_key=os.getenv('PINECONE_API_KEY'))
     if type(os.getenv('PINECONE_INDEX')) != type(None):
