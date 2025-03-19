@@ -76,12 +76,11 @@ def convert_all_md_to_txt() -> None:
         else:
             convert_md_to_txt(filename)
 
-def generateGoldens():
+def generateGoldens(num_context = 3):
     create_directory_struct()
     convert_all_md_to_txt()
     
     generated_set = set([x.split('/')[-1] for x in get_filenames('./datasets/json-goldens')])
-    print(generated_set)
     for file in get_filenames('./datasets/txt-files/'):
         print(file.split('/')[-1][:-4] + ".json")
         if file.split('/')[-1][:-4] + ".json" in generated_set:
@@ -104,7 +103,7 @@ def generateGoldens():
                 )
                 synthesizer.generate_goldens_from_docs(
                     document_paths=[file],
-                    context_construction_config=ContextConstructionConfig(chunk_size=507, chunk_overlap=20, critic_model='gpt-4o-mini'),
+                    context_construction_config=ContextConstructionConfig(chunk_size=507, critic_model='gpt-4o-mini', max_contexts_per_document=num_context),
                 )
             
                 golden_dataframe = synthesizer.to_pandas()
@@ -120,3 +119,4 @@ def generateGoldens():
                 print(f'unable to generate goldens for {file}')
 
 generateGoldens()
+generateGoldens(1)
