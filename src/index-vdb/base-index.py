@@ -4,6 +4,7 @@ import os
 import json
 from langchain.text_splitter import MarkdownTextSplitter
 from pinecone.openapi_support import PineconeApiException
+from pinecone_text.sparse import BM25Encoder
 
 load_dotenv()
 
@@ -43,11 +44,22 @@ def chunk_md(md: str,chunk_size=507, chunk_overlap=20) -> list:
         chunks.append(chunk_dict)
     return chunks
 
-def upsert_chunk(chunks: list, pc, index) -> None:
+# def train_bm25(chunk_size: int):
+#     corpus = []
+#
+#     md_files = get_filenames('./knowledge-base')
+#     for md in md_files:
+#         corpus += chunk_md(md, chunk_size, 0)
+#
+#     bm25 = BM25Encoder()
+#     bm25.fit(corpus)
+#     return bm25
+
+def upsert_chunk(chunks: list, pc, index, bm25 = None) -> None:
     #max sequences per batch: 96
     i = 0
     while i <= len(chunks):
-        embeddings = pc.inference.embed(
+        dense_embeddings = pc.inference.embed(
             model="multilingual-e5-large",
             inputs=[d['text'] for d in chunks[i:i+96]],
             parameters={
@@ -55,12 +67,19 @@ def upsert_chunk(chunks: list, pc, index) -> None:
             }
         )
 
+        sparse_embeddings = pc.inference.embed(
+            model="pinecone-sparse-english-v0",
+            inputs=[d['text'] for d in chunks[i:i+96]],
+            parameters={"input_type": "passage", "return_tokens": True}
+        )
+
         vectors = []
-        for d, e in zip(chunks[i:i+96], embeddings):
+        for data, dense, sparse in zip(chunks[i:i+96], dense_embeddings, sparse_embeddings):
             vectors.append({
-                "id": d['id'],
-                "values": e['values'],
-                "metadata": {'text': d['text'], 'source': d['filename']}
+                "id": data['id'],
+                "values": dense['values'],
+                "metadata": {'text': data['text'], 'source': data['filename']},
+                "sparse_values": {'indices': sparse['sparse_indices'], 'values': sparse['sparse_values']}
             })
             
         index.upsert(
@@ -69,7 +88,7 @@ def upsert_chunk(chunks: list, pc, index) -> None:
         )
         i+=96
 
-def get_pinecone(pc):
+def get_pinecone_index(pc):
     try:
         index = pc.Index(str(os.getenv('PINECONE_INDEX')))
     except PineconeApiException:
@@ -86,20 +105,28 @@ def get_pinecone(pc):
         index = pc.Index(str(os.getenv('PINECONE_INDEX')))
     return index
 
+def clear_namespace():
+    pc = Pinecone(api_key=os.getenv('PINECONE_API_KEY'))
+    if type(os.getenv('PINECONE_INDEX')) != type(None):
+        index = get_pinecone_index(pc)
+    else:
+        print("Add a PINECONE_INDEX to .env file")
+        return
 
-def clear_namespace(index):
     index.delete(delete_all=True, namespace=str(os.getenv('PINECONE_NAMESPACE') or ""))
 
 def index_pinecone_with_knowledge_bases(chunk_size=512, chunk_overlap=20):
     pc = Pinecone(api_key=os.getenv('PINECONE_API_KEY'))
     if type(os.getenv('PINECONE_INDEX')) != type(None):
-        index = get_pinecone(pc)
+        index = get_pinecone_index(pc)
     else:
         print("Add a PINECONE_INDEX to .env file")
         return
 
     if not os.path.exists('./cache/'):
         os.makedirs('./cache/')
+
+    # bm25 = train_bm25(chunk_size)
 
     md_files = get_filenames('./knowledge-base')
     for md in md_files:
