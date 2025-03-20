@@ -44,43 +44,39 @@ def chunk_md(md: str,chunk_size=507, chunk_overlap=20) -> list:
         chunks.append(chunk_dict)
     return chunks
 
-# def train_bm25(chunk_size: int):
-#     corpus = []
-#
-#     md_files = get_filenames('./knowledge-base')
-#     for md in md_files:
-#         corpus += chunk_md(md, chunk_size, 0)
-#
-#     bm25 = BM25Encoder()
-#     bm25.fit(corpus)
-#     return bm25
-
-def upsert_chunk(chunks: list, pc, index, bm25 = None) -> None:
+def upsert_chunk(chunks: list, pc, index, vector_type: str = "dense") -> None:
     #max sequences per batch: 96
     i = 0
     while i <= len(chunks):
-        dense_embeddings = pc.inference.embed(
-            model="multilingual-e5-large",
-            inputs=[d['text'] for d in chunks[i:i+96]],
-            parameters={
-                "input_type": "passage"
-            }
-        )
-
-        sparse_embeddings = pc.inference.embed(
-            model="pinecone-sparse-english-v0",
-            inputs=[d['text'] for d in chunks[i:i+96]],
-            parameters={"input_type": "passage", "return_tokens": True}
-        )
+        if vector_type == "dense":
+            embeddings = pc.inference.embed(
+                model="multilingual-e5-large",
+                inputs=[d['text'] for d in chunks[i:i+96]],
+                parameters={
+                    "input_type": "passage"
+                }
+            )
+        else:
+            embeddings = pc.inference.embed(
+                model="pinecone-sparse-english-v0",
+                inputs=[d['text'] for d in chunks[i:i+96]],
+                parameters={"input_type": "passage", "return_tokens": True}
+            )
 
         vectors = []
-        for data, dense, sparse in zip(chunks[i:i+96], dense_embeddings, sparse_embeddings):
-            vectors.append({
-                "id": data['id'],
-                "values": dense['values'],
-                "metadata": {'text': data['text'], 'source': data['filename']},
-                "sparse_values": {'indices': sparse['sparse_indices'], 'values': sparse['sparse_values']}
-            })
+        for data, emb in zip(chunks[i:i+96], embeddings):
+            if vector_type == "dense":
+                vectors.append({
+                    "id": data['id'],
+                    "values": emb['values'],
+                    "metadata": {'text': data['text'], 'source': data['filename']},
+                })
+            else:
+                vectors.append({
+                    "id": data['id'],
+                    "metadata": {'text': data['text'], 'source': data['filename']},
+                    "sparse_values": {'indices': emb['sparse_indices'], 'values': emb['sparse_values']}
+                })
             
         index.upsert(
             vectors=vectors,
@@ -88,13 +84,14 @@ def upsert_chunk(chunks: list, pc, index, bm25 = None) -> None:
         )
         i+=96
 
-def get_pinecone_index(pc):
+def get_pinecone_indices(pc):
     try:
-        index = pc.Index(str(os.getenv('PINECONE_INDEX')))
+        dense = pc.Index(str(os.getenv('PINECONE_DENSE_INDEX')))
+        sparse = pc.Index(str(os.getenv('PINECONE_SPARSE_INDEX')))
     except PineconeApiException:
-        if not pc.has_index(str(os.getenv('PINECONE_INDEX'))):
+        if not pc.has_index(str(os.getenv('PINECONE_DENSE_INDEX'))):
             pc.create_index_for_model(
-                name=str(os.getenv('PINECONE_INDEX')),
+                name=str(os.getenv('PINECONE_DENSE_INDEX')),
                 cloud="aws",
                 region="us-east-1",
                 embed={ # pyright: ignore
@@ -102,31 +99,44 @@ def get_pinecone_index(pc):
                     "field_map":{"text": "chunk_text"}
                 }
             )
-        index = pc.Index(str(os.getenv('PINECONE_INDEX')))
-    return index
+        dense = pc.Index(str(os.getenv('PINECONE_DENSE_INDEX')))
+
+        if not pc.has_index(str(os.getenv('PINECONE_SPARSE_INDEX'))):
+            pc.create_index_for_model(
+                name=str(os.getenv('PINECONE_SPARSE_INDEX')),
+                cloud="aws",
+                region="us-east-1",
+                embed={ # pyright: ignore
+                    "model":"pinecone-sparse-english-v0",
+                    "field_map":{"text": "chunk_text"}
+                }
+            )
+        sparse = pc.Index(str(os.getenv('PINECONE_SPARSE_INDEX')))
+
+    return dense, sparse 
 
 def clear_namespace():
     pc = Pinecone(api_key=os.getenv('PINECONE_API_KEY'))
-    if type(os.getenv('PINECONE_INDEX')) != type(None):
-        index = get_pinecone_index(pc)
+    if type(os.getenv('PINECONE_DENSE_INDEX')) != type(None) or type(os.getenv('PINECONE_SPARSE_INDEX')) != type(None):
+        dense_index, sparse_index = get_pinecone_indices(pc)
     else:
-        print("Add a PINECONE_INDEX to .env file")
+        print("Add a PINECONE_DENSE_INDEX to .env file")
         return
 
-    index.delete(delete_all=True, namespace=str(os.getenv('PINECONE_NAMESPACE') or ""))
+    dense_index.delete(delete_all=True, namespace=str(os.getenv('PINECONE_NAMESPACE') or ""))
+    sparse_index.delete(delete_all=True, namespace=str(os.getenv('PINECONE_NAMESPACE') or ""))
 
 def index_pinecone_with_knowledge_bases(chunk_size=512, chunk_overlap=20):
     pc = Pinecone(api_key=os.getenv('PINECONE_API_KEY'))
-    if type(os.getenv('PINECONE_INDEX')) != type(None):
-        index = get_pinecone_index(pc)
+
+    if type(os.getenv('PINECONE_DENSE_INDEX')) != type(None) or type(os.getenv('PINECONE_SPARSE_INDEX')) != type(None):
+        dense_index, sparse_index = get_pinecone_indices(pc)
     else:
-        print("Add a PINECONE_INDEX to .env file")
+        print("Add a PINECONE_DENSE_INDEX to .env file")
         return
 
     if not os.path.exists('./cache/'):
         os.makedirs('./cache/')
-
-    # bm25 = train_bm25(chunk_size)
 
     md_files = get_filenames('./knowledge-base')
     for md in md_files:
@@ -141,7 +151,8 @@ def index_pinecone_with_knowledge_bases(chunk_size=512, chunk_overlap=20):
                 continue
             else:
                 print(md.split('/')[-1] + " upserting")
-                upsert_chunk(chunks, pc, index)
+                upsert_chunk(chunks, pc, dense_index, "dense")
+                upsert_chunk(chunks, pc, sparse_index, "sparse")
                 index_cache[md.split('/')[-1]] = True
                 with open('./cache/index-cache.json', 'w') as file:
                     json.dump(index_cache, file)
