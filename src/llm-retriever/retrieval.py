@@ -1,9 +1,8 @@
-from dataclasses import fields
 import os
 from dotenv import load_dotenv
 from pinecone import Pinecone
 from pinecone.openapi_support import PineconeApiException
-
+from langchain_community.chat_models import ChatOpenAI
 load_dotenv()
 
 def get_pinecone_index(pc):
@@ -39,7 +38,8 @@ def get_pinecone_index(pc):
 #     )
 #     return dense_embeddings[0]['values'], sparse_embeddings[0]
 #
-def query_pinecone_index(index, query, top_k: int = 5, include_metadata: bool = True):
+
+def semantic_search(index, query: str,top_k: int = 5):
     query_response = index.search_records(
         namespace=str(os.getenv('PINECONE_NAMESPACE')),
         query={
@@ -47,15 +47,38 @@ def query_pinecone_index(index, query, top_k: int = 5, include_metadata: bool = 
                 "top_k": top_k
         }
     )
-    return query_response
+    return query_response 
 
+def sparse_search(index, query: str, top_k: int = 5):
+    sparse_vector = {} 
+    query_response = index.query(
+        namespace=str(os.getenv('PINECONE_NAMESPACE')),
+        top_k=top_k,
+        sparseVector=sparse_vector,
+        includeMetaData=True
+    )
+    return query_response 
 
-def semantic_search(query: str):
+def run_rag(prompt: str):
     pc = Pinecone(api_key=os.getenv('PINECONE_API_KEY'))
     index = get_pinecone_index(pc)
 
-    # query_embeddings = get_query_embeddings(pc, query)
-    answers = query_pinecone_index(index=index, query=query, top_k=5, include_metadata=True)
-    return answers
+    llm = ChatOpenAI(temperature=0.25, model="gpt-4o-mini") 
+    messages = [
+        (
+            "system",
+            '''You are a helpful assistant with access to an external knowledge base. 
+                You will be given additional context in many of your interactions.''',
+        ),
+        ("human", prompt),
+    ]
+    query_response = semantic_search(index, prompt)
+    text_answer = " ".join([doc['fields']['text'] for doc in query_response.result['hits']])
+    added_prompt = f"{text_answer} Using the provided information, give me a better and summarized answer"
+    messages.append(("assistant", added_prompt))
+    better_answer = llm.invoke(messages)
+    return better_answer
 
-print(semantic_search('what is Paragon'))
+# Call the function
+final_answer = run_rag(prompt="what is paragon")
+print(final_answer)
