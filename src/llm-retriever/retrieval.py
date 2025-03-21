@@ -1,5 +1,6 @@
 import os
 from dotenv import load_dotenv
+from huggingface_hub.inference._generated.types import summarization
 from pinecone import Pinecone
 from pinecone.openapi_support import PineconeApiException
 from langchain_openai.chat_models import ChatOpenAI
@@ -95,13 +96,25 @@ def merge_chunks(dense_matches, sparse_matches):
     deduped_hits = {hit['_id']: hit for hit in dense_matches['result']['hits'] + sparse_matches['result']['hits']}.values()
     return sorted(deduped_hits, key=lambda x: x['_score'], reverse=True)
 
-def compress_context(context: str):
-    llm_lingua = PromptCompressor()
+def compress_context(llm_lingua, context: list[str], instruction: str, question:str, target_token=500):
+    compressed_prompt = llm_lingua.compress_prompt(
+        context=context,
+        instruction=instruction,
+        question=question,
+        target_token=target_token,
+        rank_method="longllmlingua",
+        dynamic_context_compression_ratio=0.4,  # enable dynamic_context_compression_ratio
+        reorder_context="sort",
+    )
+    print(f"""savings: {compressed_prompt['saving']} | origin_tokens: {compressed_prompt['origin_tokens']} | compressed_tokens: {compressed_prompt['compressed_tokens']}""")
+    return compressed_prompt['compressed_prompt']
+
     
 
 
-def run_rag(prompt: str, search_method:str="dense", top_k:int=5, rerank:bool=False):
-    pc = Pinecone(api_key=os.getenv('PINECONE_API_KEY'))
+pc = Pinecone(api_key=os.getenv('PINECONE_API_KEY'))
+llm_lingua = PromptCompressor(model_name="openai-community/gpt2", device_map="cpu")
+def run_rag(prompt: str, search_method:str="dense", top_k:int=5, rerank:bool=False, summarization:bool=False, target_token=500):
     dense_index, sparse_index = get_pinecone_indices(pc)
 
     llm = ChatOpenAI(temperature=0.25, model="gpt-4o-mini") 
@@ -116,21 +129,29 @@ def run_rag(prompt: str, search_method:str="dense", top_k:int=5, rerank:bool=Fal
     
     if search_method == 'dense':
         response = vector_search(dense_index, prompt, top_k, rerank)
-        text_answer = " ".join([doc['fields']['text'] for doc in response.result['hits']])
+        context=[doc['fields']['text'] for doc in response.result['hits']]
+        text_answer = " ".join(context)
     elif search_method == 'sparse':
         response = vector_search(sparse_index, prompt, top_k, rerank)
-        text_answer = " ".join([doc['fields']['text'] for doc in response.result['hits']])
+        context=[doc['fields']['text'] for doc in response.result['hits']]
+        text_answer = " ".join(context)
     else:
         query_response = vector_search(dense_index, prompt, top_k, rerank)
         sparse_response = vector_search(sparse_index, prompt, top_k, rerank)
         response = {"result": {"hits": merge_chunks(query_response, sparse_response)}}
-        text_answer = " ".join([doc['fields']['text'] for doc in response['result']['hits']])
+        context=[doc['fields']['text'] for doc in response['result']['hits']]
+        text_answer = " ".join(context)
 
-    added_prompt = f"{text_answer} Using the provided information, give me a better and summarized answer"
+    instruction = "Using the provided information, give me a better and summarized answer"
+    if summarization:
+        added_prompt=compress_context(llm_lingua, context, instruction, prompt, target_token)
+    else:
+        added_prompt = f"{text_answer} {instruction}"
+
     messages.append(("assistant", added_prompt))
     better_answer = llm.invoke(messages)
     return better_answer
 
 # Call the function
-final_answer = run_rag(prompt="what is paragon", search_method='hybrid', rerank=True)
+final_answer = run_rag(prompt="what is paragon", search_method='hybrid', rerank=True, summarization=True, target_token=500)
 print(final_answer)
