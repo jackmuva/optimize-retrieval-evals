@@ -3,7 +3,8 @@ from dotenv import load_dotenv
 from pinecone import Pinecone
 from pinecone.openapi_support import PineconeApiException
 from langchain_openai.chat_models import ChatOpenAI
-from pinecone_text import sparse
+from llmlingua import PromptCompressor
+
 load_dotenv()
 
 def get_pinecone_indices(pc):
@@ -93,6 +94,11 @@ def vector_search(index, query: str,top_k: int = 5, rerank:bool=False):
 def merge_chunks(dense_matches, sparse_matches):
     deduped_hits = {hit['_id']: hit for hit in dense_matches['result']['hits'] + sparse_matches['result']['hits']}.values()
     return sorted(deduped_hits, key=lambda x: x['_score'], reverse=True)
+
+def compress_context(context: str):
+    llm_lingua = PromptCompressor()
+    
+
 
 def run_rag(prompt: str, search_method:str="dense", top_k:int=5, rerank:bool=False):
     pc = Pinecone(api_key=os.getenv('PINECONE_API_KEY'))
