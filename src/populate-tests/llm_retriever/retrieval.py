@@ -150,8 +150,4 @@ def run_rag(prompt: str, search_method:str="dense", top_k:int=5, rerank:bool=Fal
 
     messages.append(("assistant", added_prompt))
     better_answer = llm.invoke(messages)
-    return better_answer
-
-# Call the function
-final_answer = run_rag(prompt="what is paragon", search_method='hybrid', rerank=True, summarization=True, target_token=500)
-print(final_answer)
+    return better_answer, context 
