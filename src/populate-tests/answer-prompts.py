@@ -32,7 +32,7 @@ def populate_response(response:dict, settings:dict={'search_method':'dense',
         result[row]['retrieval_context'] = context
     return result
 
-def loop_prompts(search_method:str="dense", top_k:int=5, rerank:bool=False, summarization:bool=False, target_token=500):
+def loop_prompts(prefix:str="", search_method:str="dense", top_k:int=5, rerank:bool=False, summarization:bool=False, target_token=500):
     create_directory_struct()
     settings = {'search_method':search_method,
                 'top_k': top_k,
@@ -42,7 +42,7 @@ def loop_prompts(search_method:str="dense", top_k:int=5, rerank:bool=False, summ
                 }
 
     for filename in get_filenames("./datasets/json-goldens/"):
-        if os.path.exists('./datasets/responses/' + filename.split('/')[-1]):
+        if os.path.exists('./datasets/responses/' + prefix + filename.split('/')[-1]):
             print(f'cached result, skipping {filename}')
             continue
         
@@ -60,10 +60,11 @@ def loop_prompts(search_method:str="dense", top_k:int=5, rerank:bool=False, summ
         
         try: 
             result_dict = populate_response(response, settings)
-            with open('./datasets/responses/' + filename.split('/')[-1], 'w') as res_json_file:
+            with open('./datasets/responses/' + prefix + filename.split('/')[-1], 'w') as res_json_file:
                 json.dump(result_dict, res_json_file)
             print(f'Success! Responsed to {filename}')
         except Exception as e:
             print(f'Unable to populate for {filename}: {e}')
 
-loop_prompts()
+# loop_prompts(prefix="base_")
+loop_prompts("optimized_", "hybrid", 5, True, True, 500)
