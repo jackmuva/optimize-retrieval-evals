@@ -13,7 +13,7 @@ def create_directory_struct():
     if not os.path.exists('./datasets/evals/'):
         os.makedirs('./datasets/evals/')
 
-def eval_json(filename: str, prefix:str="") -> None:
+def eval_json(filename: str) -> None:
     if not os.path.exists(filename):
         print(f'{filename} does not exist in responses')
         return
@@ -36,7 +36,7 @@ def eval_json(filename: str, prefix:str="") -> None:
     contextual_relevancy = ContextualRelevancyMetric(threshold=0.5, model='gpt-4o-mini')
 
     evaluation = evaluate(test_cases, [answer_relevancy, faithfulness, contextual_relevancy],max_concurrent=1, ignore_errors=True, run_async=False, throttle_value=1, use_cache=True) 
-    with open('./datasets/evals/' + prefix + filename.split('/')[-1], "w") as f:
+    with open('./datasets/evals/' + filename.split('/')[-1], "w") as f:
          json.dump(evaluation.model_dump(), f)
 
 def get_filenames(directory_path: str) -> list[str]:
@@ -64,7 +64,7 @@ def loop_responses(prefix:str="") -> None:
 
         try:
             print(f'Evaluating ' + filename.split('/')[-1])
-            eval_json(filename, prefix)
+            eval_json(filename)
         except Exception as e:
             print(f'{filename} unable to be evaluated: {e}')
 
