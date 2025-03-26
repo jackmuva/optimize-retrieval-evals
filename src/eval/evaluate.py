@@ -35,7 +35,8 @@ def eval_json(filename: str) -> None:
     faithfulness = FaithfulnessMetric(threshold=0.5, model='gpt-4o-mini')
     contextual_relevancy = ContextualRelevancyMetric(threshold=0.5, model='gpt-4o-mini')
 
-    evaluation = evaluate(test_cases, [answer_relevancy, faithfulness, contextual_relevancy],max_concurrent=1, ignore_errors=True, run_async=False, throttle_value=1, use_cache=True) 
+    evaluation = evaluate(test_cases, [answer_relevancy, faithfulness, contextual_relevancy],max_concurrent=1, ignore_errors=True, run_async=False,
+                          throttle_value=1, use_cache=True, print_results=False) 
     with open('./datasets/evals/' + filename.split('/')[-1], "w") as f:
          json.dump(evaluation.model_dump(), f)
 

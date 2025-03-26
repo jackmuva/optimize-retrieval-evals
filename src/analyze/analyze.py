@@ -92,12 +92,15 @@ def create_results_table(results: list, labels: list) -> pd.DataFrame:
                     df_dict['contextual_relevancy_reason'].append(res[i]['metrics'][j]['reason'])
     return pd.DataFrame.from_dict(df_dict)
 
-def loop_evals(res_filename: str) -> None:
+def loop_evals(res_filename: str, prefix:str="") -> None:
     create_directory_struct()
     files = get_filenames("./datasets/evals/")
     final_df = pd.DataFrame()
 
     for i, filename in enumerate(files):
+        if prefix != filename.split('/')[-1][0:len(prefix)]:
+            continue
+
         with open(filename, "r") as file:
             eval_json = json.load(file)
         source = filename.split('/')[-1].split('_')[1]
@@ -111,4 +114,5 @@ def loop_evals(res_filename: str) -> None:
 
     final_df.to_csv("./datasets/analysis/" + res_filename + ".csv")
     
-loop_evals('base_results')
+# loop_evals('base_results')
+loop_evals('optimized_results', "optimized_")
