@@ -103,10 +103,10 @@ def loop_evals(res_filename: str, prefix:str="") -> None:
 
         with open(filename, "r") as file:
             eval_json = json.load(file)
-        source = filename.split('/')[-1].split('_')[1]
+        source = filename.split('/')[-1].split('_')[2]
 
         record_json = clean_results(eval_json, source)
-        df = create_results_table([record_json], ["base"])
+        df = create_results_table([record_json], [prefix.split('_')[0]])
         if i == 0:
             final_df = df
         if i > 0:
@@ -114,5 +114,11 @@ def loop_evals(res_filename: str, prefix:str="") -> None:
 
     final_df.to_csv("./datasets/analysis/" + res_filename + ".csv")
     
-# loop_evals('base_results')
-loop_evals('optimized_results', "optimized_")
+# loop_evals('base_results', 'base_')
+# loop_evals('optimized_results', "optimized_")
+# loop_evals('nosum_results', 'nosum_')
+loop_evals("noreranknosum_results", "noreranknosum_")
+loop_evals("noreranksum_results", "noreranksum_")
+loop_evals("denseopt_results", "denseopt_")
+loop_evals("densenosum_results", "densenosum_")
+loop_evals("densenoreranknosum_results", "densenoreranknosum_")

@@ -35,8 +35,8 @@ def eval_json(filename: str) -> None:
     faithfulness = FaithfulnessMetric(threshold=0.5, model='gpt-4o-mini')
     contextual_relevancy = ContextualRelevancyMetric(threshold=0.5, model='gpt-4o-mini')
 
-    evaluation = evaluate(test_cases, [answer_relevancy, faithfulness, contextual_relevancy],max_concurrent=1, ignore_errors=True, run_async=False,
-                          throttle_value=1, use_cache=True, print_results=False) 
+    evaluation = evaluate(test_cases, [answer_relevancy, faithfulness, contextual_relevancy],max_concurrent=6, ignore_errors=True, run_async=True,
+                          throttle_value=5, use_cache=True, print_results=False) 
     with open('./datasets/evals/' + filename.split('/')[-1], "w") as f:
          json.dump(evaluation.model_dump(), f)
 
@@ -70,4 +70,10 @@ def loop_responses(prefix:str="") -> None:
             print(f'{filename} unable to be evaluated: {e}')
 
 # loop_responses("base_")
-loop_responses("optimized_")
+# loop_responses("optimized_")
+# loop_responses("nosum_")
+loop_responses("noreranknosum_")
+loop_responses("noreranksum_")
+loop_responses("denseopt_")
+loop_responses("densenosum_")
+loop_responses("densenoreranknosum_")
